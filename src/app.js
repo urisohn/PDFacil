@@ -1581,7 +1581,7 @@ function applyFit() {
 viewer.addEventListener(
   'wheel',
   (e) => {
-    if (!e.ctrlKey || !S.pdf) return;
+    if (!(e.ctrlKey || e.metaKey) || !S.pdf) return;
     e.preventDefault();
     S.fitMode = null;
     const factor = Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * 0.004);
@@ -2417,6 +2417,17 @@ window.addEventListener('drop', (e) => {
 
 // ---------------------------------------------------------------- startup
 api.onOpenPath((p) => openPath(p));
+api.onMenu((ch) => {
+  const editing = isEditable(document.activeElement);
+  if (ch === 'menu-about') commands.about();
+  else if (ch === 'menu-undo') editing ? document.execCommand('undo') : undo();
+  else if (ch === 'menu-redo') editing ? document.execCommand('redo') : redo();
+});
+// On a Mac, show the Command key in tooltips instead of Ctrl.
+if (api.isMac) {
+  document.body.classList.add('mac');
+  for (const el of document.querySelectorAll('[title]')) el.title = el.title.replace(/Ctrl\+/g, '⌘').replace(/Ctrl \+/g, '⌘ ');
+}
 api.onSaveAndClose(saveAllAndClose);
 
 $('#aboutDlg').addEventListener('mousedown', (e) => {

@@ -25,4 +25,8 @@ contextBridge.exposeInMainWorld('api', {
   pathForFile: (file) => webUtils.getPathForFile(file),
   onOpenPath: (cb) => ipcRenderer.on('open-path', (_e, p) => cb(p)),
   onSaveAndClose: (cb) => ipcRenderer.on('save-and-close', () => cb()),
+  isMac: process.platform === 'darwin',
+  onMenu: (cb) => {
+    for (const ch of ['menu-undo', 'menu-redo', 'menu-about']) ipcRenderer.on(ch, () => cb(ch));
+  },
 });

@@ -6,8 +6,10 @@
   "scripts": {
     "postinstall": "node scripts/copy-vendor.js",
     "start": "electron .",
-    "dist": "electron-builder --win dir --x64 && node scripts/copy-exe.js",
-    "test": "node test/smoke.cjs"
+    "dist": "electron-builder --dir && node scripts/copy-exe.js",
+    "test": "node test/smoke.cjs",
+    "dist:win": "electron-builder --win dir --x64 && node scripts/copy-exe.js",
+    "dist:mac": "electron-builder --mac dir && node scripts/copy-exe.js"
   },
   "author": "Uri Simonsohn",
   "license": "CC-BY-NC-4.0",
@@ -54,6 +56,15 @@
     },
     "electronLanguages": [
       "en-US"
-    ]
+    ],
+    "mac": {
+      "target": [
+        {
+          "target": "dir"
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity"
+    }
   }
 }

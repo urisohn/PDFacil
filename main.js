@@ -7,6 +7,8 @@ let win = null;
 let isDirty = false;
 let forceClose = false;
 let pendingOpenPath = null;
+let rendererAskedStartup = false;
+const isMac = process.platform === 'darwin';
 
 const recentFile = () => path.join(app.getPath('userData'), 'recent.json');
 
@@ -61,7 +63,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 500,
     title: 'PDFacil',
-    icon: path.join(__dirname, 'build', 'icon.png'),
+    ...(isMac ? {} : { icon: path.join(__dirname, 'build', 'icon.png') }),
     backgroundColor: '#f3f3f3',
     show: false,
     webPreferences: {
@@ -71,7 +73,30 @@ function createWindow() {
       sandbox: false,
     },
   });
-  Menu.setApplicationMenu(null);
+  // Windows/Linux: no menu bar (the ribbon has everything). macOS always shows a menu bar,
+  // and Cmd+C / Cmd+V / Cmd+Q only work through it, so give it a small standard one.
+  if (isMac) {
+    const send = (ch) => () => win && win.webContents.send(ch);
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { label: app.name, submenu: [
+        { label: 'About PDFacil', click: send('menu-about') },
+        { type: 'separator' },
+        { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ] },
+      { label: 'Edit', submenu: [
+        // Undo/redo go to the app (comments, highlights, pages), or to the text field being typed in.
+        { label: 'Undo', accelerator: 'Cmd+Z', click: send('menu-undo') },
+        { label: 'Redo', accelerator: 'Shift+Cmd+Z', click: send('menu-redo') },
+        { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
+      ] },
+      { label: 'Window', submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'togglefullscreen' }] },
+    ]));
+  } else {
+    Menu.setApplicationMenu(null);
+  }
   win.webContents.setVisualZoomLevelLimits(1, 1);
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
   win.once('ready-to-show', () => {
@@ -118,12 +143,24 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
   pendingOpenPath = pdfArg(process.argv);
+  // macOS: files opened from Finder (double-click, "Open With", drop on the Dock icon) arrive here.
+  app.on('open-file', (e, p) => {
+    e.preventDefault();
+    if (win && rendererAskedStartup) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
+      win.webContents.send('open-path', p);
+    } else {
+      pendingOpenPath = p;
+    }
+  });
   app.whenReady().then(createWindow);
   app.on('window-all-closed', () => app.quit());
 }
 
 // ---------- IPC ----------
 ipcMain.handle('startup-path', () => {
+  rendererAskedStartup = true;
   const p = pendingOpenPath;
   pendingOpenPath = null;
   return p;
