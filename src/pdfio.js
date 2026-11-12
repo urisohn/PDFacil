@@ -10,6 +10,7 @@ const {
 } = PDFLib;
 
 const MARK = 'PDFacilData'; // private key holding our own model JSON for exact round-trips
+const IMG_KEY = 'PDFacilImage'; // private key holding a signature's PNG
 
 export const HIGHLIGHT_COLORS = {
   yellow: [1, 0.92, 0.23],
@@ -66,6 +67,14 @@ export async function importAnnotations(bytes) {
       try {
         if (mark) {
           const data = JSON.parse(textOf(mark));
+          if (data && data.type === 'sig') {
+            const st = dict.lookupMaybe(PDFName.of(IMG_KEY), PDFLib.PDFRawStream);
+            if (!st) return; // no picture: leave the stamp as it is
+            const png = PDFLib.decodePDFRawStream(st).decode();
+            let bin = '';
+            for (let k = 0; k < png.length; k += 0x8000) bin += String.fromCharCode(...png.subarray(k, k + 0x8000));
+            data.img = 'data:image/png;base64,' + btoa(bin);
+          }
           if (data && data.type) {
             data.id = newId();
             list.push(data);
@@ -259,11 +268,33 @@ export function textBoxRect(a) {
  * Build the final PDF from the base bytes and the edit model.
  * model.pages: [{ src, rot, annots }] in document order (pages can only be removed, never reordered).
  */
-export async function buildPdf(baseBytes, model, author) {
+/** Appearance for a signature: the PNG drawn into the w x h box, rotated like text boxes. */
+function signatureAP(ctx, a, image) {
+  const rad = (a.rot * Math.PI) / 180;
+  const c = Math.round(Math.cos(rad));
+  const s = Math.round(Math.sin(rad));
+  const ops = [
+    pushGraphicsState(),
+    PDFLib.concatTransformationMatrix(a.w, 0, 0, a.h, 0, 0),
+    PDFLib.drawObject('Sig0'),
+    popGraphicsState(),
+  ];
+  const stream = ctx.formXObject(ops, {
+    BBox: [0, 0, a.w, a.h],
+    Matrix: [c, s, -s, c, 0, 0],
+    Resources: { XObject: { Sig0: image.ref } },
+  });
+  return ctx.register(stream);
+}
+
+const dataUrlBytes = (u) => Uint8Array.from(atob(u.slice(u.indexOf(',') + 1)), (ch) => ch.charCodeAt(0));
+
+export async function buildPdf(baseBytes, model, author, getImage = () => null) {
   const doc = await PDFDocument.load(baseBytes, { updateMetadata: false });
   const ctx = doc.context;
   const pages = doc.getPages();
   const fonts = {};
+  const images = {}; // image id -> embedded PDFImage
   const now = PDFString.fromDate(new Date());
   const authorStr = PDFHexString.fromText(author || 'PDFacil');
 
@@ -300,6 +331,16 @@ export async function buildPdf(baseBytes, model, author) {
         dict.set(PDFName.of('DA'), PDFString.of(`/${f.res} ${a.size} Tf ${r} ${g} ${b} rg`));
         dict.set(PDFName.of('Contents'), PDFHexString.fromText(a.text));
         if (a.rot) dict.set(PDFName.of('Rotate'), PDFNumber.of(a.rot));
+      } else if (a.type === 'sig') {
+        const url = getImage(a.imgId);
+        if (!url) continue;
+        images[a.imgId] ||= await doc.embedPng(dataUrlBytes(url));
+        dict = ctx.obj({
+          Type: 'Annot', Subtype: 'Stamp', Name: 'PDFacilSignature', Rect: textBoxRect(a), F: 4,
+          AP: { N: signatureAP(ctx, a, images[a.imgId]) },
+        });
+        dict.set(PDFName.of('Contents'), PDFHexString.fromText('Signature'));
+        if (a.rot) dict.set(PDFName.of('Rotate'), PDFNumber.of(a.rot));
       } else continue;
       dict.set(PDFName.of('T'), authorStr);
       dict.set(PDFName.of('M'), now);
@@ -307,6 +348,11 @@ export async function buildPdf(baseBytes, model, author) {
       dict.set(PDFName.of('P'), page.ref);
       const copy = { ...a };
       delete copy.id;
+      if (a.type === 'sig') {
+        // Keep the original picture in a private stream so the signature stays editable when reopened.
+        delete copy.imgId;
+        dict.set(PDFName.of(IMG_KEY), ctx.register(ctx.flateStream(dataUrlBytes(getImage(a.imgId)))));
+      }
       dict.set(PDFName.of(MARK), PDFHexString.fromText(JSON.stringify(copy)));
       page.node.addAnnot(ctx.register(dict));
     }

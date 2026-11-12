@@ -50,6 +50,7 @@
           <button class="big tool" data-tool="highlight" data-icon="highlight" title="Highlight: drag over text (H)">Highlight</button>
           <button class="big tool" data-tool="text" data-icon="text" title="Type text on the page: click where it should go (T)">Text</button>
           <button class="big tool" data-tool="note" data-icon="note" title="Add a comment: click where it should go (N)">Comment</button>
+          <button class="big" data-cmd="sign" data-icon="sign" title="Add your signature to the page (S)">Sign</button>
         </div>
       </div>
       <div class="group">
@@ -132,6 +133,7 @@
           <button class="big tool" data-tool="highlight" data-icon="highlight" title="Highlight: drag over text (H)">Highlight</button>
           <button class="big tool" data-tool="text" data-icon="text" title="Type text on the page: click where it should go (T)">Text</button>
           <button class="big tool" data-tool="note" data-icon="note" title="Add a comment: click where it should go (N)">Comment</button>
+          <button class="big" data-cmd="sign" data-icon="sign" title="Add your signature to the page (S)">Sign</button>
         </div>
         <div class="glabel">Tools</div>
       </div>
@@ -271,6 +273,36 @@
       <button class="primary" data-cmd="closeAbout">OK</button>
     </div>
   </div>
+  <div id="sigDlg" hidden>
+    <div class="sig-card" role="dialog" aria-labelledby="sigTitle">
+      <button class="sig-x" title="Close (Esc)">✕</button>
+      <h3 id="sigTitle">Create your signature</h3>
+      <div class="sig-tabs">
+        <button class="sig-tab active" data-mode="draw">Draw</button>
+        <button class="sig-tab" data-mode="type">Type</button>
+        <button class="sig-tab" data-mode="upload">Upload image</button>
+      </div>
+      <div class="sig-pane" data-mode="draw">
+        <div class="sig-padwrap"><canvas id="sigPad"></canvas><div class="sig-line"></div></div>
+        <div class="sig-row"><span class="sig-hint">Sign with your mouse, trackpad or pen.</span><button class="sig-clear">Clear</button></div>
+      </div>
+      <div class="sig-pane" data-mode="type" hidden>
+        <input id="sigName" type="text" placeholder="Type your name" autocomplete="name" />
+        <div class="sig-fonts"></div>
+      </div>
+      <div class="sig-pane" data-mode="upload" hidden>
+        <div class="sig-row"><input id="sigFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></div>
+        <div class="sig-preview"></div>
+        <label class="sig-check"><input id="sigClean" type="checkbox" checked /> Remove the white background (for a photo or scan of your signature on paper)</label>
+      </div>
+      <div class="sig-foot">
+        <div class="sig-inks"><span>Ink</span><button class="sig-ink" data-ink="black" title="Black"></button><button class="sig-ink" data-ink="blue" title="Blue"></button></div>
+        <label class="sig-check"><input id="sigRemember" type="checkbox" checked /> Remember this signature on this computer</label>
+        <div class="sig-btns"><button class="sig-cancel">Cancel</button><button class="sig-use primary">Use signature</button></div>
+      </div>
+    </div>
+  </div>
+  <div id="sigGhost" hidden><img alt="" /></div>
   <div id="ctxMenu" class="menu" hidden></div>
   <div id="busy" hidden><div class="spinner"></div><div id="busyMsg">Working…</div></div>
 </body>

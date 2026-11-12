@@ -4,6 +4,7 @@ import {
   importAnnotations, buildPdf, HIGHLIGHT_COLORS, newId, wrapLines, TEXT_PAD, LINE_FACTOR, TEXT_FONTS, fontOf,
 } from './pdfio.js';
 import { loadOutline, flatten, setInitialOpen } from './outline.js';
+import { createSignatureDialog, loadSaved as loadSavedSignatures, deleteSaved as deleteSavedSignature } from './signature.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.min.mjs';
 const PDFJS_OPTS = {
@@ -56,6 +57,7 @@ const ICONS = {
   x: '<path d="M6 6l12 12M18 6 6 18"/>',
   chevUp: '<path d="m6 15 6-6 6 6"/>',
   chevDown: '<path d="m6 9 6 6 6-6"/>',
+  sign: '<path d="M3 17c3-1 4-9 6-9s0 9 2 9 2-5 4-5 1 4 3 4 2-2 3-2"/><path d="M3 21h18"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01" stroke-width="2.4"/>',
 };
 const svg = (name) =>
@@ -119,6 +121,24 @@ const effRot = (i) => {
 const viewportFor = (i, scale = S.scale) =>
   S.pdfPages[S.model.pages[i].src].getViewport({ scale, rotation: effRot(i) });
 const findAnnot = (page, id) => S.model.pages[page]?.annots.find((a) => a.id === id);
+
+// Signature pictures are kept out of the undo snapshots: annotations refer to them by id.
+const IMAGES = new Map(); // id -> PNG data URL
+const IMAGE_EL = new Map(); // id -> loaded <img>, for drawing thumbnails
+function registerImage(dataUrl) {
+  let h = 2166136261;
+  for (let k = 0; k < dataUrl.length; k += 7) h = Math.imul(h ^ dataUrl.charCodeAt(k), 16777619);
+  const id = `img-${(h >>> 0).toString(36)}-${dataUrl.length.toString(36)}`;
+  if (!IMAGES.has(id)) {
+    IMAGES.set(id, dataUrl);
+    const im = new Image();
+    im.onload = () => S.model.pages.forEach((p, k) => p.annots.some((a) => a.imgId === id) && markThumbStale(k));
+    im.src = dataUrl;
+    IMAGE_EL.set(id, im);
+  }
+  return id;
+}
+const getImage = (id) => IMAGES.get(id) || null;
 
 // ---------------------------------------------------------------- ui helpers
 let statusTimer;
@@ -502,6 +522,14 @@ async function openPath(p) {
 
 async function loadBytes(bytes, p) {
   const imported = await importAnnotations(bytes.slice());
+  for (const list of imported.annotsBySrc) {
+    for (const a of list || []) {
+      if (a.type === 'sig' && a.img) {
+        a.imgId = registerImage(a.img);
+        delete a.img;
+      }
+    }
+  }
   const task = pdfjsLib.getDocument({ data: imported.baseBytes.slice(), ...PDFJS_OPTS });
   task.onPassword = () => {
     task.destroy();
@@ -594,7 +622,7 @@ async function save(asNew) {
   }
   try {
     busy('Saving…');
-    const bytes = await buildPdf(S.baseBytes, S.model, S.author);
+    const bytes = await buildPdf(S.baseBytes, S.model, S.author, getImage);
     await api.writeFile(p, bytes);
     S.path = p;
     S.name = p.split(/[\\/]/).pop();
@@ -617,7 +645,7 @@ async function print() {
   commitEdits();
   try {
     busy('Preparing pages for printing…');
-    const bytes = S.readOnly ? S.baseBytes.slice() : await buildPdf(S.baseBytes, S.model, S.author);
+    const bytes = S.readOnly ? S.baseBytes.slice() : await buildPdf(S.baseBytes, S.model, S.author, getImage);
     const doc = await pdfjsLib.getDocument({ data: bytes, ...PDFJS_OPTS }).promise;
     const out = [];
     for (let n = 1; n <= doc.numPages; n++) {
@@ -816,6 +844,8 @@ function renderAnnots(i) {
       }
     } else if (a.type === 'text') {
       pe.ann.append(makeTextEl(i, a, vp, rot, selected));
+    } else if (a.type === 'sig') {
+      pe.ann.append(makeSigEl(a, vp, rot, selected));
     } else if (a.type === 'note') {
       const [x, y] = vp.convertToViewportPoint(a.x, a.y);
       const d = document.createElement('div');
@@ -866,6 +896,25 @@ function makeTextEl(i, a, vp, rot, selected) {
   rs.className = 'rs';
   rs.title = 'Drag to change width';
   wrap.append(tb, rs);
+  return wrap;
+}
+
+function makeSigEl(a, vp, rot, selected) {
+  const [x, y] = vp.convertToViewportPoint(a.x, a.y);
+  const wrap = document.createElement('div');
+  wrap.className = 'ann-sig' + (selected ? ' selected' : '');
+  wrap.dataset.id = a.id;
+  wrap.title = 'Signature: drag to move, drag the corner to resize, Delete to remove';
+  Object.assign(wrap.style, { left: `${x}px`, top: `${y}px`, width: `${a.w * S.scale}px`, height: `${a.h * S.scale}px` });
+  const d = (rot - a.rot + 360) % 360;
+  if (d) wrap.style.transform = `rotate(${d}deg)`;
+  const img = document.createElement('img');
+  img.src = getImage(a.imgId) || '';
+  img.draggable = false;
+  const rs = document.createElement('div');
+  rs.className = 'rs-sig';
+  rs.title = 'Drag to resize';
+  wrap.append(img, rs);
   return wrap;
 }
 
@@ -1109,9 +1158,25 @@ pagesDiv.addEventListener('mousedown', (e) => {
   if (!hit) return;
   const { i, x, y } = hit;
 
-  // Clicks on existing text boxes / notes.
+  // Placing a signature: click where it should go.
+  if (S.tool === 'sign' && placingSig) {
+    e.preventDefault();
+    placeSignature(i, x, y);
+    return;
+  }
+
+  // Clicks on existing text boxes / notes / signatures.
   const textEl = e.target.closest('.ann-text');
   const noteEl = e.target.closest('.ann-note');
+  const sigEl = e.target.closest('.ann-sig');
+  if (sigEl) {
+    e.preventDefault();
+    const id = sigEl.dataset.id;
+    commitEdits();
+    select(i, id);
+    if (e.target.classList.contains('rs-sig')) return startSigResize(e, i, id, sigEl);
+    return startMove(e, i, id, sigEl);
+  }
   if (textEl) {
     const id = textEl.dataset.id;
     if (S.editing?.id === id) return; // clicking inside the box being edited
@@ -1347,7 +1412,7 @@ pagesDiv.addEventListener('contextmenu', (e) => {
     items.push({ label: 'Copy', key: 'Ctrl+C', run: () => navigator.clipboard.writeText(text) });
     items.push('-');
   }
-  const annEl = e.target.closest('.ann-text, .ann-note');
+  const annEl = e.target.closest('.ann-text, .ann-note, .ann-sig');
   const hl = annEl ? null : hitHighlight(i, x, y);
   const id = annEl?.dataset.id || hl?.id;
   if (id) {
@@ -1460,6 +1525,125 @@ function recolor(i, id, c) {
   a.color = [...c];
   renderAnnots(i);
   changed([i]);
+}
+
+// ---------------------------------------------------------------- signatures
+const sigGhost = $('#sigGhost');
+let placingSig = null; // { imgId, w, h } in points while choosing where to put it
+
+const SIG_DEFAULT_W = 150; // points (about 5.3 cm)
+
+function openSignMenu() {
+  if (!guardEdit()) return;
+  commitEdits();
+  const saved = loadSavedSignatures();
+  const btn = $('.panel.active [data-cmd=sign]') || $('[data-cmd=sign]');
+  const r = btn.getBoundingClientRect();
+  if (!saved.length) {
+    newSignature();
+    return;
+  }
+  const items = [];
+  const title = document.createElement('div');
+  title.className = 'sig-menu-title';
+  title.textContent = 'Choose a signature, then click on the page';
+  items.push({ el: title });
+  for (const sig of saved) {
+    const row = document.createElement('div');
+    row.className = 'sig-choice';
+    row.innerHTML = '<button class="use" title="Use this signature"><img alt="signature"></button><button class="del" title="Forget this signature">✕</button>';
+    row.querySelector('img').src = sig.dataUrl;
+    row.querySelector('.use').onclick = () => {
+      hideMenus();
+      startPlacing(sig);
+    };
+    row.querySelector('.del').onclick = () => {
+      deleteSavedSignature(sig.id);
+      row.remove();
+      if (!loadSavedSignatures().length) hideMenus();
+    };
+    items.push({ el: row });
+  }
+  items.push('-');
+  items.push({ label: 'Create a new signature…', run: () => newSignature() });
+  showMenu(r.left, r.bottom + 4, items);
+}
+
+async function newSignature() {
+  const sig = await createSignatureDialog();
+  if (sig) startPlacing(sig);
+}
+
+function startPlacing(sig) {
+  const w = SIG_DEFAULT_W;
+  const h = (w * sig.h) / sig.w;
+  placingSig = { imgId: registerImage(sig.dataUrl), w, h };
+  setTool('sign');
+  $$('[data-cmd=sign]').forEach((b) => b.classList.add('active'));
+  sigGhost.querySelector('img').src = sig.dataUrl;
+}
+
+function placeSignature(i, x, y) {
+  const p = placingSig;
+  const vp = viewportFor(i);
+  // Center the signature on the click, but keep it on the page.
+  const wPx = p.w * S.scale;
+  const hPx = p.h * S.scale;
+  const left = Math.max(0, Math.min(vp.width - wPx, x - wPx / 2));
+  const top = Math.max(0, Math.min(vp.height - hPx, y - hPx / 2));
+  const [px, py] = vp.convertToPdfPoint(left, top);
+  pushUndo();
+  const a = { id: newId(), type: 'sig', x: px, y: py, w: p.w, h: p.h, rot: effRot(i), imgId: p.imgId };
+  addAnnot(i, a);
+  setTool('select');
+  S.sel = { page: i, id: a.id };
+  renderAnnots(i);
+  changed([i]);
+  status('Signature added. Drag to move it, drag its corner to resize, or press Delete to remove it.', 6000);
+}
+
+// The see-through preview that follows the mouse while placing.
+window.addEventListener('mousemove', (e) => {
+  if (!placingSig || S.tool !== 'sign') return;
+  const over = e.target.closest?.('.page');
+  sigGhost.hidden = !over;
+  if (!over) return;
+  const wPx = placingSig.w * S.scale;
+  const hPx = placingSig.h * S.scale;
+  Object.assign(sigGhost.style, { left: `${e.clientX - wPx / 2}px`, top: `${e.clientY - hPx / 2}px`, width: `${wPx}px`, height: `${hPx}px` });
+});
+
+function startSigResize(e, i, id, el) {
+  if (S.readOnly) return;
+  const a = findAnnot(i, id);
+  const sx = e.clientX;
+  const sy = e.clientY;
+  const deg = (effRot(i) - a.rot + 360) % 360;
+  const ux = Math.round(Math.cos((deg * Math.PI) / 180));
+  const uy = Math.round(Math.sin((deg * Math.PI) / 180));
+  const w0 = a.w;
+  const ratio = a.h / a.w;
+  const before = snapshot();
+  let w = w0;
+  const mm = (ev) => {
+    // Use the drag along the signature's own horizontal direction; keep the proportions.
+    const proj = (ev.clientX - sx) * ux + (ev.clientY - sy) * uy;
+    w = Math.max(20, w0 + proj / S.scale);
+    el.style.width = `${w * S.scale}px`;
+    el.style.height = `${w * ratio * S.scale}px`;
+  };
+  const mu = () => {
+    window.removeEventListener('mousemove', mm);
+    window.removeEventListener('mouseup', mu);
+    if (Math.abs(w - w0) < 0.5) return;
+    pushUndo(before);
+    a.w = w;
+    a.h = w * ratio;
+    renderAnnots(i);
+    changed([i]);
+  };
+  window.addEventListener('mousemove', mm);
+  window.addEventListener('mouseup', mu);
 }
 
 // ---------------------------------------------------------------- scrolling / current page
@@ -1679,6 +1863,15 @@ function drawAnnotsOnCanvas(ctx, vp, i) {
         const r = quadToScreen(vp, q);
         ctx.fillRect(r.l, r.t, r.r - r.l, r.b - r.t);
       }
+      ctx.restore();
+    } else if (a.type === 'sig') {
+      const im = IMAGE_EL.get(a.imgId);
+      if (!im || !im.complete || !im.naturalWidth) continue;
+      const [x, y] = vp.convertToViewportPoint(a.x, a.y);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate((((rot - a.rot + 360) % 360) * Math.PI) / 180);
+      ctx.drawImage(im, 0, 0, a.w * vp.scale, a.h * vp.scale);
       ctx.restore();
     } else if (a.type === 'note') {
       const [x, y] = vp.convertToViewportPoint(a.x, a.y);
@@ -2001,15 +2194,21 @@ searchInput.addEventListener('keydown', (e) => {
 // ---------------------------------------------------------------- tools & swatches
 function setTool(t) {
   commitEdits();
+  if (t !== 'sign') {
+    placingSig = null;
+    sigGhost.hidden = true;
+    $$('[data-cmd=sign]').forEach((b) => b.classList.remove('active'));
+  }
   S.tool = t;
   $$('[data-tool]').forEach((b) => b.classList.toggle('active', b.dataset.tool === t));
-  document.body.classList.remove('tool-select', 'tool-highlight', 'tool-text', 'tool-note');
+  document.body.classList.remove('tool-select', 'tool-highlight', 'tool-text', 'tool-note', 'tool-sign');
   document.body.classList.add(`tool-${t}`);
   const hints = {
     select: '',
     highlight: 'Highlight: drag over text, or drag a box on an empty area.',
     text: 'Text: click on the page where you want to type.',
     note: 'Comment: click on the page where the comment should go.',
+    sign: 'Signature: click on the page where it should go. Esc cancels.',
   };
   if (hints[t]) status(hints[t], 5000);
 }
@@ -2205,6 +2404,7 @@ const commands = {
   closeAbout: () => {
     $('#aboutDlg').hidden = true;
   },
+  sign: () => openSignMenu(),
   find: openSearch,
   findNext: () => showResult(S.search.idx + 1),
   findPrev: () => showResult(S.search.idx - 1),
@@ -2372,6 +2572,10 @@ window.addEventListener('keydown', (e) => {
     }
     return;
   }
+  if (k === 's' && !e.altKey) {
+    commands.sign();
+    return;
+  }
   const tools = { v: 'select', h: 'highlight', t: 'text', n: 'note' };
   if (tools[k] && !e.altKey) {
     setTool(tools[k]);
@@ -2451,4 +2655,4 @@ refreshRecent();
 api.startupPath().then((p) => p && openPath(p));
 
 // test hook (used by automated tests only)
-window.__pdfacil = { S, tabs, getActive: () => active, activate, closeTab, openPath, save, setTool, highlightSelection, deletePages, rotatePages, undo, redo, runSearch, setScale, buildPdf };
+window.__pdfacil = { S, IMAGES, registerImage, startPlacing, tabs, getActive: () => active, activate, closeTab, openPath, save, setTool, highlightSelection, deletePages, rotatePages, undo, redo, runSearch, setScale, buildPdf };

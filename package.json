@@ -1,6 +1,6 @@
 {
   "name": "pdfacil",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "PDFacil - an easy PDF viewer and editor",
   "main": "main.js",
   "scripts": {
@@ -14,6 +14,9 @@
   "author": "Uri Simonsohn",
   "license": "CC-BY-NC-4.0",
   "dependencies": {
+    "@fontsource/caveat": "^5.3.0",
+    "@fontsource/dancing-script": "^5.3.0",
+    "@fontsource/great-vibes": "^5.3.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.10.38"
   },
