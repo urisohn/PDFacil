@@ -2544,12 +2544,11 @@ async function refreshRecent() {
   list.forEach((r, k) => {
     const { name, dir } = split(r.path);
     const tr = document.createElement('tr');
-    tr.title = r.path;
     tr.innerHTML = '<td class="n"></td><td class="dir"></td><td class="file"></td><td class="time"></td>';
     tr.children[0].textContent = k + 1;
-    // Left-to-right marks keep the path readable while it is cut off at the start.
-    tr.children[1].textContent = `\u200E${dir}\u200E`;
+    tr.children[1].textContent = dir;
     tr.children[2].textContent = name;
+    tr.children[2].title = r.path;
     tr.children[3].textContent = formatWhen(r.time);
     if (r.time) tr.children[3].title = new Date(r.time).toLocaleString();
     tr.onclick = () => openPath(r.path);
@@ -2562,7 +2561,56 @@ async function refreshRecent() {
     };
     tbody.append(tr);
   });
+  requestAnimationFrame(fitRecentPaths);
 }
+
+// Folder paths in the recent files table always show their beginning. If a path is too long,
+// its text shrinks (down to half the normal size); if it still does not fit, the end is cut with "…".
+const pathCanvas = document.createElement('canvas').getContext('2d');
+function fitRecentPaths() {
+  const cells = $$('#recentTable td.dir');
+  if (!cells.length || !cells[0].offsetParent) return;
+  const cs = getComputedStyle(cells[0]);
+  const base = parseFloat(getComputedStyle($('#recentTable')).fontSize);
+  const pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  const avail = cells[0].clientWidth - pad - 2;
+  pathCanvas.font = `${cs.fontWeight} ${base}px ${cs.fontFamily}`;
+  for (const td of cells) {
+    const w = pathCanvas.measureText(td.textContent).width;
+    const size = w <= avail ? base : Math.max(base * 0.5, Math.floor(((base * avail) / w) * 10) / 10);
+    td.style.fontSize = `${size}px`;
+  }
+}
+new ResizeObserver(() => fitRecentPaths()).observe($('#recentTable'));
+
+// Hovering over a folder path that is cut off shows the whole path in a popup.
+const pathTip = document.createElement('div');
+pathTip.id = 'pathTip';
+pathTip.hidden = true;
+document.body.append(pathTip);
+let pathTipTimer = null;
+const hidePathTip = () => {
+  clearTimeout(pathTipTimer);
+  pathTip.hidden = true;
+};
+$('#recentTable').addEventListener('mouseover', (e) => {
+  const td = e.target.closest('td.dir');
+  if (!td) return hidePathTip();
+  if (td.scrollWidth <= td.clientWidth + 1) return hidePathTip(); // fully visible: no popup
+  clearTimeout(pathTipTimer);
+  pathTipTimer = setTimeout(() => {
+    pathTip.textContent = td.textContent;
+    pathTip.hidden = false;
+    const r = td.getBoundingClientRect();
+    const t = pathTip.getBoundingClientRect();
+    pathTip.style.left = `${Math.max(8, Math.min(r.left, innerWidth - t.width - 8))}px`;
+    const below = r.bottom + 6;
+    pathTip.style.top = `${below + t.height > innerHeight - 8 ? r.top - t.height - 6 : below}px`;
+  }, 250);
+});
+$('#recentTable').addEventListener('mouseleave', hidePathTip);
+$('.recent-scroll').addEventListener('scroll', hidePathTip);
+window.addEventListener('mousedown', hidePathTip);
 
 // Highlight the drop box while a file is dragged over the start screen.
 const dropBox = $('#dropBox');
@@ -2639,7 +2687,7 @@ try {
 } catch {}
 
 function showPanel(tab) {
-  $$('.tab').forEach((x) => x.classList.toggle('active', x.dataset.tab === tab));
+  $$('.tab[data-tab]').forEach((x) => x.classList.toggle('active', x.dataset.tab === tab));
   $$('.panel').forEach((p) => p.classList.toggle('active', p.dataset.panel === tab));
 }
 
@@ -2662,7 +2710,7 @@ function setRibbonCollapsed(v) {
   if (S.pdf && S.fitMode) setTimeout(applyFit, 0);
 }
 
-$$('.tab').forEach((t) => {
+$$('.tab[data-tab]').forEach((t) => {
   t.addEventListener('click', () => {
     if (ribbonCollapsed) {
       // Collapsed: show the ribbon temporarily on top of the document.
@@ -2850,7 +2898,10 @@ api.onSaveAndClose(saveAllAndClose);
 $('#aboutDlg').addEventListener('mousedown', (e) => {
   if (e.target.id === 'aboutDlg') commands.closeAbout();
 });
-api.version().then((v) => ($('#aboutVersion').textContent = v));
+api.version().then((v) => {
+  $('#aboutVersion').textContent = v;
+  $('#brandVer').textContent = `v${v}`;
+});
 
 for (const which of ['thumbs', 'outline']) {
   let v = null;

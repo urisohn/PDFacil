@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDFacil: an easy PDF viewer</title>
+<meta name="description" content="PDFacil is a free PDF viewer for Windows and Mac, designed for researchers who read papers in PDF format.">
+<link rel="icon" type="image/png" href="data:image/png;base64,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">
+<style>
+  /* All sizes are in rem, so this one line sets the overall text size (130% of the browser default). */
+  html { font-size: 130%; }
+  :root { --red: #b3261e; --blue: #1a5fd0; --text: #222; --muted: #666; --line: #e3e3e3; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif; color: var(--text); background: #f6f6f6; line-height: 1.55; font-size: 1rem; }
+  main { max-width: 54rem; margin: 0 auto; padding: 2.5rem 1.5rem 3.5rem; }
+  header { display: flex; align-items: center; gap: 1.1rem; }
+  header img { width: 4.5rem; height: 4.5rem; }
+  h1 { margin: 0; font-size: 2.5rem; letter-spacing: -0.03em; line-height: 1.1; }
+  h1 .pdf { color: var(--red); }
+  .tag { margin: 0.25rem 0 0; color: var(--muted); }
+  .meta { margin: 1rem 0 0; color: var(--muted); font-size: 0.85rem; }
+  .meta strong { color: var(--text); font-weight: 600; }
+  h2 { font-size: 1.3rem; margin: 2.4rem 0 0.6rem; }
+  p { margin: 0 0 0.75rem; }
+  a { color: var(--blue); }
+  .shot { margin: 1.4rem 0 0.4rem; background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 0.5rem; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+  .shot img { display: block; width: 100%; height: auto; border-radius: 4px; }
+  .caption { color: var(--muted); font-size: 0.8rem; text-align: center; margin-bottom: 0; }
+  .download { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin: 0.9rem 0 1rem; padding: 1.25rem 1.4rem; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
+  .btn { display: inline-block; background: var(--blue); color: #fff; text-decoration: none; font-weight: 600; padding: 0.65rem 1.6rem; border-radius: 6px; }
+  .btn:hover { background: #154ea9; }
+  .download small { color: var(--muted); font-size: 0.8rem; }
+  ol, ul { margin: 0 0 0.75rem; padding-left: 1.4rem; }
+  li { margin: 0.2rem 0; }
+  code { font-family: Consolas, "Courier New", monospace; background: #ececec; padding: 0.05em 0.3em; border-radius: 3px; font-size: 0.92em; }
+  .aside { color: var(--muted); font-size: 0.85rem; margin: 0 0 0 0.1rem; }
+  pre { font-family: Consolas, Menlo, "Courier New", monospace; background: #24292f; color: #f0f0f0; padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.85rem; line-height: 1.5; overflow-x: auto; margin: 0.5rem 0 0.4rem; }
+  .note { background: #fff8e1; border: 1px solid #f0dfa0; border-radius: 8px; padding: 0.6rem 0.9rem; font-size: 0.9rem; }
+
+  /* repository card, in the style commonly used to point to a code repository */
+  .repo { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; background: #fff; border: 1px solid #d0d7de; border-radius: 10px; text-decoration: none; color: var(--text); margin: 0.6rem 0 0; }
+  .repo:hover { border-color: #8c959f; box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+  .repo .icon { width: 3rem; height: 3rem; flex: none; border-radius: 10px; background: #24292f; display: grid; place-items: center; }
+  .repo .icon svg { width: 1.7rem; height: 1.7rem; }
+  .repo .info { flex: 1; min-width: 0; }
+  .repo .url { font-weight: 600; color: var(--blue); font-size: 1rem; overflow-wrap: anywhere; }
+  .repo .go { flex: none; background: #24292f; color: #fff; font-weight: 600; font-size: 0.85rem; padding: 0.5rem 1rem; border-radius: 6px; white-space: nowrap; }
+  .repo:hover .go { background: #000; }
+  @media (max-width: 640px) { .repo .go { display: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="data:image/png;base64,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" alt="PDFacil logo">
+    <div>
+      <h1><span class="pdf">PDF</span>acil</h1>
+      <p class="tag">An easy PDF viewer (<em>fácil</em>: 'easy', in Spanish)</p>
+    </div>
+  </header>
+  <p class="meta"><strong>Version 1.1.1</strong> &middot; November 2026 &middot; Created by Uri Simonsohn with Claude Opus 5.5</p>
+
+  <p style="margin-top:1.5rem">PDFacil is a PDF viewer for Windows and Mac, designed for researchers who read papers in PDF format.
+  The Home menu on top has all the tools one needs:</p>
+
+  <div class="shot"><img src="menu_screenshot.png" alt="The PDFacil Home menu: Open, Save, Print, Delete Page, Rotate Left, Rotate Right, Select, Highlight, Text, Comment, Outline, Thumbnails"></div>
+  <p class="caption">The Home menu</p>
+
+
+  <h2>Installation on Windows</h2>
+  <div class="download">
+    <a class="btn" href="PDFacil.zip" download>Download PDFacil</a>
+    <small>Version 1.1.1 &middot; zip file, about 150 MB &middot; Windows 10 and 11 (64-bit)</small>
+  </div>
+  <ol>
+    <li>Download the zip file above.</li>
+    <li>Unzip it.</li>
+    <li>No install needed: just run <code>PDFacil.exe</code> inside the unzipped folder. Keep all the files in that folder together.</li>
+  </ol>
+  <p class="note">The first time you run it, Windows may say "Windows protected your PC", because the app is not code-signed.
+  Click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+
+  <h2 id="mac">Installation on a Mac</h2>
+  <p>There is no ready-made Mac download yet, but you can build PDFacil on your Mac in a few minutes, without any programming:</p>
+  <ol>
+    <li>Install <a href="https://nodejs.org/">Node.js</a> (version 20 or newer).</li>
+    <li>Open <strong>Terminal</strong> and run these lines one by one. The first time you use <code>git</code>, macOS offers to install it; click <strong>Install</strong>.
+<pre>git clone https://github.com/urisohn/PDFacil.git
+cd PDFacil
+npm install
+npm run dist</pre></li>
+    <li>Open the new <code>PDFacil/dist/mac-arm64</code> folder (<code>dist/mac</code> on older Intel Macs) and drag <code>PDFacil.app</code> into your Applications folder.</li>
+  </ol>
+  <p>More details, including what to do if macOS refuses to open the app, are in the
+  <a href="https://github.com/urisohn/PDFacil#build-from-source-mac-or-windows">instructions on GitHub</a>.</p>
+
+  <h2>Make PDFacil your default PDF viewer</h2>
+  <p><strong>Windows:</strong> right-click any PDF file, choose <strong>Open with &gt; Choose another app</strong>,
+  browse to <code>PDFacil.exe</code>, select it, and tick <strong>Always</strong>.</p>
+  <p><strong>Mac:</strong> select any PDF in Finder, choose <strong>File &gt; Get Info</strong>, pick PDFacil under
+  <strong>Open with</strong>, and click <strong>Change All</strong>.</p>
+
+  <h2>Open source</h2>
+  <p>The source code of PDFacil is on GitHub:</p>
+  <a class="repo" href="https://github.com/urisohn/PDFacil">
+    <div class="icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg>
+    </div>
+    <div class="info">
+      <div class="url">https://github.com/urisohn/PDFacil</div>
+    </div>
+    <div class="go">View on GitHub</div>
+  </a>
+</main>
+</body>
+</html>
