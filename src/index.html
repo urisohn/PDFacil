@@ -50,6 +50,7 @@
           <button class="big tool" data-tool="highlight" data-icon="highlight" title="Highlight: drag over text (H)">Highlight</button>
           <button class="big tool" data-tool="text" data-icon="text" title="Type text on the page: click where it should go (T)">Text</button>
           <button class="big tool" data-tool="note" data-icon="note" title="Add a comment: click where it should go (N)">Comment</button>
+          <button class="big tool" data-tool="draw" data-icon="pen" title="Draw freehand on the page (D)">Draw</button>
           <button class="big" data-cmd="sign" data-icon="sign" title="Add your signature to the page (S)">Sign</button>
         </div>
       </div>
@@ -133,6 +134,7 @@
           <button class="big tool" data-tool="highlight" data-icon="highlight" title="Highlight: drag over text (H)">Highlight</button>
           <button class="big tool" data-tool="text" data-icon="text" title="Type text on the page: click where it should go (T)">Text</button>
           <button class="big tool" data-tool="note" data-icon="note" title="Add a comment: click where it should go (N)">Comment</button>
+          <button class="big tool" data-tool="draw" data-icon="pen" title="Draw freehand on the page (D)">Draw</button>
           <button class="big" data-cmd="sign" data-icon="sign" title="Add your signature to the page (S)">Sign</button>
         </div>
         <div class="glabel">Tools</div>
@@ -158,6 +160,14 @@
           <div class="swatches" id="txtSwatches"></div>
         </div>
         <div class="glabel">Text</div>
+      </div>
+      <div class="group">
+        <div class="items">
+          <div class="swatches pen-colors" style="max-width:96px"></div>
+          <div class="pen-widths grid"></div>
+          <button class="big pen-eraser" data-icon="eraser" title="Eraser: click or drag over a drawing to delete it (E)">Eraser</button>
+        </div>
+        <div class="glabel">Pen</div>
       </div>
       <div class="group">
         <div class="items">
@@ -205,6 +215,17 @@
     <aside id="sidebar" tabindex="0"><div id="thumbs"></div></aside>
     <div id="viewerWrap">
       <div id="viewer" tabindex="0"><div id="pages"></div></div>
+
+      <div id="penBar" hidden>
+        <span class="pb-label" data-icon="pen">Draw</span>
+        <span class="pb-sep"></span>
+        <div class="swatches pen-colors"></div>
+        <span class="pb-sep"></span>
+        <div class="pen-widths"></div>
+        <span class="pb-sep"></span>
+        <button class="pb-eraser pen-eraser" data-icon="eraser" title="Eraser: click or drag over a drawing to delete it (E)">Eraser</button>
+        <button class="pb-done" title="Stop drawing (Esc)">Done</button>
+      </div>
 
       <div id="searchbar" hidden>
         <input id="searchInput" type="text" placeholder="Search in document" />

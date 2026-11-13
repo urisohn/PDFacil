@@ -1,6 +1,7 @@
 // PDFacil - reading and writing annotations with pdf-lib.
 // Annotations are stored in PDF user space (unrotated page coordinates, origin bottom-left).
 /* global PDFLib */
+import { tracePath, pathsBBox } from './ink.js';
 const {
   PDFDocument, PDFName, PDFHexString, PDFString, PDFArray, PDFDict, PDFNumber,
   StandardFonts, degrees,
@@ -92,6 +93,15 @@ export async function importAnnotations(bytes) {
             color: rgb || HIGHLIGHT_COLORS.yellow,
             contents: textOf(dict.get(PDFName.of('Contents'))),
           });
+          removeRefs.add(ref);
+        } else if (sub === '/Ink') {
+          const inkList = dict.lookupMaybe(PDFName.of('InkList'), PDFArray);
+          if (!inkList) return;
+          const paths = inkList.asArray().map((x) => arr(ctx.lookupMaybe(x, PDFArray) || x)).filter((p) => p && p.length >= 2);
+          if (!paths.length) return;
+          const bs = dict.lookupMaybe(PDFName.of('BS'), PDFDict);
+          const w = bs ? num(bs.get(PDFName.of('W'))) : 1;
+          list.push({ id: newId(), type: 'ink', paths, color: rgb || [0, 0, 0], width: w || 1 });
           removeRefs.add(ref);
         } else if (sub === '/Text') {
           const r = arr(dict.lookupMaybe(PDFName.of('Rect'), PDFArray));
@@ -287,6 +297,34 @@ function signatureAP(ctx, a, image) {
   return ctx.register(stream);
 }
 
+function inkAP(ctx, a) {
+  const pad = a.width / 2 + 1;
+  const [x0, y0, x1, y1] = pathsBBox(a.paths);
+  const rect = [x0 - pad, y0 - pad, x1 + pad, y1 + pad];
+  const ops = [
+    pushGraphicsState(),
+    setStrokingRgbColor(...a.color),
+    setLineWidth(a.width),
+    PDFLib.setLineCap(PDFLib.LineCapStyle.Round),
+    PDFLib.setLineJoin(PDFLib.LineJoinStyle.Round),
+  ];
+  for (const p of a.paths) {
+    let cx = 0, cy = 0;
+    tracePath(p, {
+      moveTo: (x, y) => { ops.push(moveTo(x, y)); cx = x; cy = y; },
+      lineTo: (x, y) => { ops.push(lineTo(x, y)); cx = x; cy = y; },
+      // quadratic -> cubic Bezier
+      quadTo: (qx, qy, x, y) => {
+        ops.push(appendBezierCurve(cx + (2 / 3) * (qx - cx), cy + (2 / 3) * (qy - cy), x + (2 / 3) * (qx - x), y + (2 / 3) * (qy - y), x, y));
+        cx = x; cy = y;
+      },
+    });
+    ops.push(stroke());
+  }
+  ops.push(popGraphicsState());
+  return { ref: ctx.register(ctx.formXObject(ops, { BBox: rect })), rect };
+}
+
 const dataUrlBytes = (u) => Uint8Array.from(atob(u.slice(u.indexOf(',') + 1)), (ch) => ch.charCodeAt(0));
 
 export async function buildPdf(baseBytes, model, author, getImage = () => null) {
@@ -331,6 +369,14 @@ export async function buildPdf(baseBytes, model, author, getImage = () => null) 
         dict.set(PDFName.of('DA'), PDFString.of(`/${f.res} ${a.size} Tf ${r} ${g} ${b} rg`));
         dict.set(PDFName.of('Contents'), PDFHexString.fromText(a.text));
         if (a.rot) dict.set(PDFName.of('Rotate'), PDFNumber.of(a.rot));
+      } else if (a.type === 'ink') {
+        if (!a.paths?.length) continue;
+        const ap = inkAP(ctx, a);
+        dict = ctx.obj({
+          Type: 'Annot', Subtype: 'Ink', Rect: ap.rect, F: 4, C: a.color,
+          InkList: a.paths.map((p) => p.map((v) => Math.round(v * 100) / 100)),
+          BS: { W: a.width, S: 'S' }, AP: { N: ap.ref },
+        });
       } else if (a.type === 'sig') {
         const url = getImage(a.imgId);
         if (!url) continue;

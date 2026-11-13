@@ -4,6 +4,7 @@ import {
   importAnnotations, buildPdf, HIGHLIGHT_COLORS, newId, wrapLines, TEXT_PAD, LINE_FACTOR, TEXT_FONTS, fontOf,
 } from './pdfio.js';
 import { loadOutline, flatten, setInitialOpen } from './outline.js';
+import { PEN_COLORS, PEN_WIDTHS, simplify, svgPathData, tracePath, distToPath, pathsBBox } from './ink.js';
 import { createSignatureDialog, loadSaved as loadSavedSignatures, deleteSaved as deleteSavedSignature } from './signature.js';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = './vendor/pdf.worker.min.mjs';
@@ -58,6 +59,7 @@ const ICONS = {
   chevUp: '<path d="m6 15 6-6 6 6"/>',
   chevDown: '<path d="m6 9 6 6 6-6"/>',
   sign: '<path d="M3 17c3-1 4-9 6-9s0 9 2 9 2-5 4-5 1 4 3 4 2-2 3-2"/><path d="M3 21h18"/>',
+  pen: '<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/><path d="M14.5 5.5l3 3"/><path d="M5 15l3 3"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.01" stroke-width="2.4"/>',
 };
 const svg = (name) =>
@@ -102,6 +104,9 @@ const S = {
   textColor: 'black',
   textSize: 12,
   textFont: 'helv',
+  penColor: 'red',
+  penWidth: 'medium',
+  erasing: false,
   current: 0,
   selPages: new Set(),
   sel: null, // { page, id }
@@ -703,9 +708,11 @@ function buildPagesDOM() {
     hl.className = 'hlLayer';
     const ann = document.createElement('div');
     ann.className = 'annLayer';
-    el.append(hl, ann);
+    const ink = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    ink.setAttribute('class', 'inkLayer');
+    el.append(hl, ink, ann);
     pagesDiv.append(el);
-    return { el, hl, ann, canvas: null, tlDiv: null, tl: null, key: null };
+    return { el, hl, ink, ann, canvas: null, tlDiv: null, tl: null, key: null };
   });
   S.pe.forEach((_, i) => layoutPage(i));
   S.pe.forEach((p) => pageObserver.observe(p.el));
@@ -828,6 +835,7 @@ function renderAnnots(i) {
   const rot = effRot(i);
   pe.hl.innerHTML = '';
   pe.ann.innerHTML = '';
+  let inkSvg = '';
   for (const a of S.model.pages[i].annots) {
     const selected = S.sel && S.sel.page === i && S.sel.id === a.id;
     if (a.type === 'highlight') {
@@ -844,6 +852,17 @@ function renderAnnots(i) {
       }
     } else if (a.type === 'text') {
       pe.ann.append(makeTextEl(i, a, vp, rot, selected));
+    } else if (a.type === 'ink') {
+      const scr = a.paths.map((p) => inkToScreen(vp, p));
+      const col = rgbCss(a.color);
+      for (const p of scr) {
+        inkSvg += `<path d="${svgPathData(p)}" fill="none" stroke="${col}" stroke-width="${Math.max(0.6, a.width * S.scale)}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      }
+      if (selected) {
+        const [x0, y0, x1, y1] = pathsBBox(scr);
+        const pad = (a.width * S.scale) / 2 + 4;
+        inkSvg += `<rect class="ink-sel" x="${x0 - pad}" y="${y0 - pad}" width="${x1 - x0 + 2 * pad}" height="${y1 - y0 + 2 * pad}" rx="3"/>`;
+      }
     } else if (a.type === 'sig') {
       pe.ann.append(makeSigEl(a, vp, rot, selected));
     } else if (a.type === 'note') {
@@ -858,7 +877,31 @@ function renderAnnots(i) {
       pe.ann.append(d);
     }
   }
+  pe.ink.innerHTML = inkSvg;
   if (S.openNote && S.openNote.page === i) showNotePopup(i);
+}
+
+function inkToScreen(vp, p) {
+  const out = new Array(p.length);
+  for (let k = 0; k < p.length; k += 2) {
+    const [x, y] = vp.convertToViewportPoint(p[k], p[k + 1]);
+    out[k] = x;
+    out[k + 1] = y;
+  }
+  return out;
+}
+
+/** The drawing under a screen point on page i (or null). */
+function hitInk(i, x, y, slop = 5) {
+  const vp = viewportFor(i);
+  const list = S.model.pages[i].annots;
+  for (let k = list.length - 1; k >= 0; k--) {
+    const a = list[k];
+    if (a.type !== 'ink') continue;
+    const tol = (a.width * S.scale) / 2 + slop;
+    if (a.paths.some((p) => distToPath(inkToScreen(vp, p), x, y) <= tol)) return a;
+  }
+  return null;
 }
 
 function quadToScreen(vp, q) {
@@ -1165,6 +1208,15 @@ pagesDiv.addEventListener('mousedown', (e) => {
     return;
   }
 
+  if (S.tool === 'draw') {
+    if (!guardEdit()) return;
+    e.preventDefault();
+    commitEdits();
+    if (S.erasing) startErase(i);
+    else startStroke(i, x, y);
+    return;
+  }
+
   // Clicks on existing text boxes / notes / signatures.
   const textEl = e.target.closest('.ann-text');
   const noteEl = e.target.closest('.ann-note');
@@ -1278,7 +1330,7 @@ window.addEventListener('mouseup', (e) => {
   if (!moved) {
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
-    const a = hitHighlight(d.i, d.x, d.y);
+    const a = hitInk(d.i, d.x, d.y) || hitHighlight(d.i, d.x, d.y);
     select(d.i, a ? a.id : null);
   }
 });
@@ -1413,7 +1465,7 @@ pagesDiv.addEventListener('contextmenu', (e) => {
     items.push('-');
   }
   const annEl = e.target.closest('.ann-text, .ann-note, .ann-sig');
-  const hl = annEl ? null : hitHighlight(i, x, y);
+  const hl = annEl ? null : hitInk(i, x, y) || hitHighlight(i, x, y);
   const id = annEl?.dataset.id || hl?.id;
   if (id) {
     select(i, id);
@@ -1526,6 +1578,148 @@ function recolor(i, id, c) {
   renderAnnots(i);
   changed([i]);
 }
+
+// ---------------------------------------------------------------- drawing (ink)
+function buildPenControls() {
+  for (const box of $$('.pen-colors')) {
+    for (const [name, c] of Object.entries(PEN_COLORS)) {
+      const b = document.createElement('button');
+      b.className = 'swatch';
+      b.dataset.pen = name;
+      b.style.background = rgbCss(c);
+      b.title = name[0].toUpperCase() + name.slice(1);
+      b.dataset.needsDoc = '1';
+      b.onclick = () => setPen({ color: name });
+      box.append(b);
+    }
+  }
+  for (const box of $$('.pen-widths')) {
+    for (const w of PEN_WIDTHS) {
+      const b = document.createElement('button');
+      b.className = 'pen-w';
+      b.dataset.w = w.key;
+      b.title = w.label;
+      b.dataset.needsDoc = '1';
+      b.innerHTML = `<span style="height:${Math.min(8, Math.max(1.5, w.w * 1.3))}px"></span>`;
+      b.onclick = () => setPen({ width: w.key });
+      box.append(b);
+    }
+  }
+  $$('.pen-eraser').forEach((b) => (b.onclick = () => {
+    if (!S.pdf) return;
+    if (S.tool !== 'draw') setTool('draw');
+    setErasing(!S.erasing);
+  }));
+  $('#penBar .pb-done').onclick = () => setTool('select');
+  try {
+    const saved = JSON.parse(localStorage.getItem('pdfacil.pen') || '{}');
+    if (PEN_COLORS[saved.color]) S.penColor = saved.color;
+    if (PEN_WIDTHS.some((w) => w.key === saved.width)) S.penWidth = saved.width;
+  } catch {}
+  syncPenUI();
+}
+
+function syncPenUI() {
+  $$('.pen-colors .swatch').forEach((b) => b.classList.toggle('active', !S.erasing && b.dataset.pen === S.penColor));
+  $$('.pen-w').forEach((b) => b.classList.toggle('active', !S.erasing && b.dataset.w === S.penWidth));
+  $$('.pen-eraser').forEach((b) => b.classList.toggle('active', S.erasing));
+  $$('.pen-w span').forEach((sp) => (sp.style.background = rgbCss(PEN_COLORS[S.penColor])));
+}
+
+function setPen({ color, width }) {
+  if (color) S.penColor = color;
+  if (width) S.penWidth = width;
+  try {
+    localStorage.setItem('pdfacil.pen', JSON.stringify({ color: S.penColor, width: S.penWidth }));
+  } catch {}
+  setErasing(false);
+  if (S.pdf && S.tool !== 'draw') setTool('draw');
+  syncPenUI();
+}
+
+function setErasing(v) {
+  S.erasing = !!v;
+  document.body.classList.toggle('erasing', S.erasing);
+  syncPenUI();
+}
+
+const penWidthPt = () => PEN_WIDTHS.find((w) => w.key === S.penWidth).w;
+
+function startStroke(i, x, y) {
+  const pe = S.pe[i];
+  const pts = [x, y];
+  const col = rgbCss(PEN_COLORS[S.penColor]);
+  const live = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  live.setAttribute('fill', 'none');
+  live.setAttribute('stroke', col);
+  live.setAttribute('stroke-width', String(Math.max(0.6, penWidthPt() * S.scale)));
+  live.setAttribute('stroke-linecap', 'round');
+  live.setAttribute('stroke-linejoin', 'round');
+  live.setAttribute('d', svgPathData(pts));
+  pe.ink.append(live);
+  const box = pe.el.getBoundingClientRect();
+  const mm = (ev) => {
+    const nx = ev.clientX - box.left;
+    const ny = ev.clientY - box.top;
+    const lx = pts[pts.length - 2];
+    const ly = pts[pts.length - 1];
+    if (Math.hypot(nx - lx, ny - ly) < 1.2) return;
+    pts.push(nx, ny);
+    live.setAttribute('d', svgPathData(pts));
+  };
+  const mu = () => {
+    window.removeEventListener('mousemove', mm);
+    window.removeEventListener('mouseup', mu);
+    live.remove();
+    const vp = viewportFor(i);
+    const pdfPts = [];
+    for (let k = 0; k < pts.length; k += 2) {
+      const [px, py] = vp.convertToPdfPoint(pts[k], pts[k + 1]);
+      pdfPts.push(Math.round(px * 100) / 100, Math.round(py * 100) / 100);
+    }
+    const path = simplify(pdfPts, 0.3);
+    pushUndo();
+    addAnnot(i, { id: newId(), type: 'ink', paths: [path], color: [...PEN_COLORS[S.penColor]], width: penWidthPt() });
+    renderAnnots(i);
+    changed([i]);
+  };
+  window.addEventListener('mousemove', mm);
+  window.addEventListener('mouseup', mu);
+}
+
+function startErase(i) {
+  const before = snapshot();
+  let erased = false;
+  const touched = new Set();
+  const eraseAt = (ev) => {
+    // The eraser works on whichever page is under the mouse.
+    const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.page');
+    if (!el) return;
+    const pi = +el.dataset.idx;
+    const b = el.getBoundingClientRect();
+    const a = hitInk(pi, ev.clientX - b.left, ev.clientY - b.top, 8);
+    if (!a) return;
+    const mp = S.model.pages[pi];
+    mp.annots = mp.annots.filter((x) => x !== a);
+    if (S.sel?.id === a.id) S.sel = null;
+    erased = true;
+    touched.add(pi);
+    renderAnnots(pi);
+  };
+  const mu = () => {
+    window.removeEventListener('mousemove', eraseAt);
+    window.removeEventListener('mouseup', mu);
+    if (erased) {
+      pushUndo(before);
+      changed([...touched]);
+    }
+  };
+  window.addEventListener('mousemove', eraseAt);
+  window.addEventListener('mouseup', mu);
+  // erase what is right under the first click too
+  eraseAt(window.__lastMouse || { clientX: -1, clientY: -1 });
+}
+window.addEventListener('mousedown', (e) => (window.__lastMouse = e), true);
 
 // ---------------------------------------------------------------- signatures
 const sigGhost = $('#sigGhost');
@@ -1862,6 +2056,18 @@ function drawAnnotsOnCanvas(ctx, vp, i) {
       for (const q of a.quads) {
         const r = quadToScreen(vp, q);
         ctx.fillRect(r.l, r.t, r.r - r.l, r.b - r.t);
+      }
+      ctx.restore();
+    } else if (a.type === 'ink') {
+      ctx.save();
+      ctx.strokeStyle = rgbCss(a.color);
+      ctx.lineWidth = Math.max(0.5, a.width * vp.scale);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const p of a.paths) {
+        ctx.beginPath();
+        tracePath(inkToScreen(vp, p), { moveTo: (x, y) => ctx.moveTo(x, y), lineTo: (x, y) => ctx.lineTo(x, y), quadTo: (cx, cy, x, y) => ctx.quadraticCurveTo(cx, cy, x, y) });
+        ctx.stroke();
       }
       ctx.restore();
     } else if (a.type === 'sig') {
@@ -2201,7 +2407,9 @@ function setTool(t) {
   }
   S.tool = t;
   $$('[data-tool]').forEach((b) => b.classList.toggle('active', b.dataset.tool === t));
-  document.body.classList.remove('tool-select', 'tool-highlight', 'tool-text', 'tool-note', 'tool-sign');
+  document.body.classList.remove('tool-select', 'tool-highlight', 'tool-text', 'tool-note', 'tool-sign', 'tool-draw');
+  $('#penBar').hidden = t !== 'draw';
+  if (t !== 'draw') setErasing(false);
   document.body.classList.add(`tool-${t}`);
   const hints = {
     select: '',
@@ -2209,6 +2417,7 @@ function setTool(t) {
     text: 'Text: click on the page where you want to type.',
     note: 'Comment: click on the page where the comment should go.',
     sign: 'Signature: click on the page where it should go. Esc cancels.',
+    draw: 'Draw: drag on the page. Pick a color and thickness above; Eraser removes lines; Esc when done.',
   };
   if (hints[t]) status(hints[t], 5000);
 }
@@ -2576,7 +2785,11 @@ window.addEventListener('keydown', (e) => {
     commands.sign();
     return;
   }
-  const tools = { v: 'select', h: 'highlight', t: 'text', n: 'note' };
+  if (k === 'e' && S.tool === 'draw' && !e.altKey) {
+    setErasing(!S.erasing);
+    return;
+  }
+  const tools = { v: 'select', h: 'highlight', t: 'text', n: 'note', d: 'draw' };
   if (tools[k] && !e.altKey) {
     setTool(tools[k]);
     return;
@@ -2649,6 +2862,7 @@ for (const which of ['thumbs', 'outline']) {
 
 document.body.classList.add('nodoc', 'tool-select');
 buildSwatches();
+buildPenControls();
 updateDirty();
 updateZoomUI();
 refreshRecent();

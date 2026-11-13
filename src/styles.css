@@ -126,7 +126,8 @@ select#textFont { padding: 3px; border: 1px solid #bbb; border-radius: 3px; widt
 .page .hlLayer, .page .annLayer { position: absolute; inset: 0; pointer-events: none; }
 .page .hlLayer { z-index: 1; mix-blend-mode: multiply; }
 .page .textLayer { z-index: 2; }
-.page .annLayer { z-index: 3; }
+.page .inkLayer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; overflow: visible; }
+.page .annLayer { z-index: 4; }
 .page .textLayer { user-select: text; }
 
 /* tools */
@@ -398,3 +399,29 @@ body.tool-sign .page .textLayer { pointer-events: none; }
 .sig-btns { display: flex; gap: 8px; margin-left: auto; }
 .sig-cancel { border: 1px solid #ccc; background: #fff; border-radius: 6px; padding: 8px 16px; cursor: pointer; }
 .sig-use:disabled { opacity: .45; cursor: default; }
+
+/* drawing (ink) */
+body.tool-draw .page { cursor: crosshair; }
+body.tool-draw .page .textLayer, body.tool-draw .page .annLayer > * { pointer-events: none; }
+body.tool-draw.erasing .page { cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='22' height='22'%3E%3Ccircle cx='11' cy='11' r='8' fill='white' fill-opacity='.6' stroke='%23333' stroke-width='1.5'/%3E%3C/svg%3E") 11 11, cell; }
+.inkLayer .ink-sel { fill: none; stroke: var(--sel); stroke-width: 1; stroke-dasharray: 4 3; }
+.pen-widths { display: flex; gap: 2px; align-items: center; }
+.pen-widths.grid { display: grid; grid-template-columns: repeat(2, 34px); gap: 2px; padding-top: 6px; }
+.pen-w { width: 34px; height: 30px; border: 1px solid transparent; background: none; border-radius: 4px; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.pen-w span { display: block; width: 22px; background: #333; border-radius: 4px; }
+.pen-w:hover { background: #ececec; }
+.pen-w.active { background: var(--brand-light); border-color: #e3b1ab; }
+button.pen-eraser.active { background: var(--brand-light); border-color: #e3b1ab; }
+#penBar { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 55; background: #fff; border: 1px solid #ccc; border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.18); display: flex; align-items: center; gap: 10px; padding: 6px 10px; }
+#penBar[hidden] { display: none; }
+#penBar .pb-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: #555; }
+#penBar .pb-label svg { width: 18px; height: 18px; color: var(--brand); }
+#penBar .pb-sep { width: 1px; height: 24px; background: #ddd; }
+#penBar .swatches { padding: 0; max-width: none; flex-wrap: nowrap; }
+#penBar .swatch { width: 20px; height: 20px; }
+#penBar .pen-w { width: 30px; height: 26px; }
+#penBar .pb-eraser { display: flex; align-items: center; gap: 5px; border: 1px solid #ccc; background: #fafafa; border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
+#penBar .pb-eraser svg { width: 16px; height: 16px; }
+#penBar .pb-done { border: 0; background: var(--brand); color: #fff; border-radius: 6px; padding: 5px 14px; font-size: 12px; cursor: pointer; }
+#penBar .pb-done:hover { background: var(--brand-dark); }
