@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('api', {
   username,
   startupPath: () => ipcRenderer.invoke('startup-path'),
   version: () => ipcRenderer.invoke('app-version'),
+  buildDate: () => ipcRenderer.invoke('build-date'),
   getRecent: () => ipcRenderer.invoke('get-recent'),
   removeRecent: (p) => ipcRenderer.invoke('remove-recent', p),
   openDialog: () => ipcRenderer.invoke('open-dialog'),

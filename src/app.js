@@ -2898,6 +2898,11 @@ api.onSaveAndClose(saveAllAndClose);
 $('#aboutDlg').addEventListener('mousedown', (e) => {
   if (e.target.id === 'aboutDlg') commands.closeAbout();
 });
+api.buildDate().then((iso) => {
+  // Running from source there is no build stamp; then today's date is the latest change.
+  const d = iso ? new Date(iso) : new Date();
+  $('#aboutDate').textContent = d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+});
 api.version().then((v) => {
   $('#aboutVersion').textContent = v;
   $('#brandVer').textContent = `v${v}`;

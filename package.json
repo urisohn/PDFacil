@@ -6,10 +6,10 @@
   "scripts": {
     "postinstall": "node scripts/copy-vendor.js",
     "start": "electron .",
-    "dist": "electron-builder --dir && node scripts/copy-exe.js",
+    "dist": "node scripts/stamp-build.js && electron-builder --dir && node scripts/copy-exe.js",
     "test": "node test/smoke.cjs",
-    "dist:win": "electron-builder --win dir --x64 && node scripts/copy-exe.js",
-    "dist:mac": "electron-builder --mac dir && node scripts/copy-exe.js"
+    "dist:win": "node scripts/stamp-build.js && electron-builder --win dir --x64 && node scripts/copy-exe.js",
+    "dist:mac": "node scripts/stamp-build.js && electron-builder --mac dir && node scripts/copy-exe.js"
   },
   "author": "Uri Simonsohn",
   "license": "CC-BY-NC-4.0",

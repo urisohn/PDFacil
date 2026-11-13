@@ -3,3 +3,4 @@ dist/
 src/vendor/
 test/out/
 *.exe
+src/build-info.json

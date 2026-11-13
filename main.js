@@ -169,6 +169,14 @@ ipcMain.handle('startup-path', () => {
 ipcMain.handle('get-recent', () => readRecent());
 ipcMain.handle('remove-recent', (_e, p) => removeRecent(p));
 ipcMain.handle('app-version', () => app.getVersion());
+// When this copy of the app was built (written by scripts/stamp-build.js); null when running from source.
+ipcMain.handle('build-date', () => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, 'src', 'build-info.json'), 'utf8')).built || null;
+  } catch {
+    return null;
+  }
+});
 
 ipcMain.handle('open-dialog', async () => {
   const r = await dialog.showOpenDialog(win, {
