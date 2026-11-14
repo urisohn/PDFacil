@@ -169,6 +169,12 @@ ipcMain.handle('startup-path', () => {
 ipcMain.handle('get-recent', () => readRecent());
 ipcMain.handle('remove-recent', (_e, p) => removeRecent(p));
 ipcMain.handle('app-version', () => app.getVersion());
+// Links clicked inside a PDF: only web and e-mail addresses are opened, in the default browser.
+ipcMain.handle('open-external', async (_e, url) => {
+  if (typeof url !== 'string' || !/^(https?:|mailto:)/i.test(url.trim())) return false;
+  await shell.openExternal(url.trim());
+  return true;
+});
 // When this copy of the app was built (written by scripts/stamp-build.js); null when running from source.
 ipcMain.handle('build-date', () => {
   try {

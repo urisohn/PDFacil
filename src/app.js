@@ -813,6 +813,113 @@ async function renderPage(i) {
   pe.tl = tl;
   pe.key = key;
   applySearchHighlights(i);
+  renderLinks(i, key);
+}
+
+// ---------------------------------------------------------------- links in the PDF
+// Clickable areas over the PDF's link annotations. Positions are in % of the page,
+// so they stay in place while zooming.
+async function getLinks(src) {
+  const page = S.pdfPages[src];
+  page._pdfacilLinks ||= page.getAnnotations({ intent: 'display' }).then((list) =>
+    list.filter((a) => a.subtype === 'Link' && (a.url || a.unsafeUrl || a.dest || a.action)),
+  ).catch(() => []);
+  return page._pdfacilLinks;
+}
+
+async function renderLinks(i, key) {
+  const pe = S.pe[i];
+  const links = await getLinks(S.model.pages[i].src);
+  if (!pe.el.isConnected || pe.key !== key) return;
+  pe.linkLayer?.remove();
+  if (!links.length) return;
+  const vp = viewportFor(i, 1);
+  const layer = document.createElement('div');
+  layer.className = 'linkLayer';
+  for (const a of links) {
+    const [x1, y1, x2, y2] = vp.convertToViewportRectangle(a.rect);
+    const el = document.createElement('a');
+    el.className = 'pdf-link';
+    Object.assign(el.style, {
+      left: `${(Math.min(x1, x2) / vp.width) * 100}%`,
+      top: `${(Math.min(y1, y2) / vp.height) * 100}%`,
+      width: `${(Math.abs(x2 - x1) / vp.width) * 100}%`,
+      height: `${(Math.abs(y2 - y1) / vp.height) * 100}%`,
+    });
+    const url = a.url || a.unsafeUrl;
+    if (url) {
+      el.title = url;
+      el.onclick = (e) => {
+        e.preventDefault();
+        api.openExternal(url).then((ok) => {
+          if (!ok) status(`PDFacil only opens web and e-mail links (this one is "${url.slice(0, 60)}").`, 6000);
+        });
+      };
+    } else if (a.dest) {
+      el.title = 'Go to the linked place in this document';
+      el.onclick = (e) => {
+        e.preventDefault();
+        followInternalLink(a.dest);
+      };
+    } else {
+      const named = { NextPage: 1, PrevPage: -1, FirstPage: 'first', LastPage: 'last' }[a.action];
+      if (named === undefined) continue;
+      el.title = a.action.replace(/([a-z])([A-Z])/g, '$1 $2');
+      el.onclick = (e) => {
+        e.preventDefault();
+        pushViewHistory();
+        if (named === 'first') goToPage(0);
+        else if (named === 'last') goToPage(S.pe.length - 1);
+        else goToPage(S.current + named);
+      };
+    }
+    layer.append(el);
+  }
+  (pe.tlDiv || pe.hl).after(layer);
+  pe.linkLayer = layer;
+}
+
+async function resolveDest(dest) {
+  try {
+    if (typeof dest === 'string') dest = await S.pdf.getDestination(dest);
+    if (!Array.isArray(dest) || !dest.length) return null;
+    const ref = dest[0];
+    const src = typeof ref === 'number' ? ref : await S.pdf.getPageIndex(ref);
+    const mode = dest[1]?.name;
+    let top = null;
+    let left = null;
+    if (mode === 'XYZ') [left, top] = [dest[2], dest[3]];
+    else if (mode === 'FitH' || mode === 'FitBH') top = dest[2];
+    else if (mode === 'FitR') [left, top] = [dest[2], dest[5]];
+    return { src, top: typeof top === 'number' ? top : null, left: typeof left === 'number' ? left : null };
+  } catch {
+    return null;
+  }
+}
+
+async function followInternalLink(dest) {
+  const t = await resolveDest(dest);
+  if (!t) return status('This link points to a place that does not exist in the document.');
+  pushViewHistory();
+  goToTarget(t);
+  status('Alt + Left arrow takes you back.', 4000);
+}
+
+// "Back" after following a link inside the document (Alt + Left arrow).
+const viewHistory = [];
+function pushViewHistory() {
+  viewHistory.push({ pdf: S.pdf, top: viewer.scrollTop, left: viewer.scrollLeft });
+  if (viewHistory.length > 50) viewHistory.shift();
+}
+function goBack() {
+  while (viewHistory.length) {
+    const v = viewHistory.pop();
+    if (v.pdf !== S.pdf) continue;
+    viewer.scrollTo({ top: v.top, left: v.left });
+    updateCurrent();
+    return true;
+  }
+  return false;
 }
 
 async function getTextContent(src) {
@@ -2745,6 +2852,10 @@ window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   const inEdit = isEditable(document.activeElement);
 
+  if (e.altKey && e.key === 'ArrowLeft' && !isEditable(document.activeElement)) {
+    if (goBack()) e.preventDefault();
+    return;
+  }
   if (e.key === 'F1' && ctrl) {
     e.preventDefault();
     setRibbonCollapsed(!ribbonCollapsed);
